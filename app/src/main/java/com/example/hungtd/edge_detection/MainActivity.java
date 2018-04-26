@@ -24,6 +24,7 @@ import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.android.Utils;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
@@ -80,7 +81,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        super.onCreate(savedInstanceState);`
         setContentView(R.layout.activity_main);
         mContext = this;
         mImgInput = (ImageView) findViewById(R.id.img_input);
@@ -196,7 +197,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             Bitmap image = (Bitmap) data.getExtras().get("data");
 
             mImgInput.setImageBitmap(image);
-            mImgOutputFour.setImageBitmap(detectEdge(image));
+            findContour(image);
         } else if (requestCode == 1500 && resultCode == RESULT_OK) {
             if (data == null) {
 
@@ -206,7 +207,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 //                Bitmap image = MediaStore.Images.Media.getBitmap(this.getContentResolver(), imageUri);
             Bitmap image = ImagePicker.getImageResized(this, imageUri);
             mImgInput.setImageBitmap(image);
-            mImgOutputFour.setImageBitmap(detectEdge(image));
+//            mImgOutputFour.setImageBitmap(detectEdge(image));
+            findContour(image);
         }
 
     }
@@ -216,13 +218,9 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         Utils.bitmapToMat(bitmap, mat);
         //smooth image
         Mat matBlur = new Mat();
-//        Imgproc.blur(mat, matBlur, new Size(3, 3));
+        Imgproc.blur(mat, matBlur, new Size(3, 3));
         Mat edges = new Mat(mat.size(), CvType.CV_8UC1);
         Imgproc.cvtColor(mat, edges, Imgproc.COLOR_RGB2GRAY);
-
-        Bitmap result02 = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
-        Utils.matToBitmap(edges, result02);
-        mImgTwo.setImageBitmap(result02);
 
 
 //        Mat edges2 = new Mat(mat.size(), CvType.CV_8UC1);
@@ -231,28 +229,52 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 //        Utils.matToBitmap(drawlinne(edges2), result4);
 //        mImgInput.setImageBitmap(result4);
         Imgproc.equalizeHist(edges, edges);
+
+        //test sobel
+        Mat sobelX = new Mat(edges.size(), edges.type());
+        Imgproc.Sobel(edges, sobelX, CvType.CV_8U, 1, 0);
+        Bitmap result02 = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(sobelX, result02);
+        mImgInput.setImageBitmap(result02);
+
+        Mat sobelY = new Mat(edges.size(), edges.type());
+        Imgproc.Sobel(edges, sobelY, CvType.CV_8U, 0, 1);
+        Bitmap result03 = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(sobelY, result03);
+        mImgTwo.setImageBitmap(result03);
+
+        Mat dtsyx = new Mat();
+        Core.subtract(sobelY, sobelX, dtsyx);
+        Bitmap result04 = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(dtsyx, result04);
+        mImgOutputThree.setImageBitmap(result04);
+
+
+        Mat sumxy = new Mat();
+        Core.add(sobelX, sobelY, sumxy);
+        Imgproc.blur(sumxy, sumxy, new Size(3, 3));
+
+
+        Mat matThresh = new Mat();
+        Imgproc.threshold(sumxy, matThresh, 130, 190, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU);
+        Bitmap result06 = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(matThresh, result06);
+        mImgOutputThree.setImageBitmap(result06);
+
+
+        Bitmap result07 = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(matThresh, result07);
+        if (1 == 1) {
+            return result07;
+        }
+
+        // test sobel ^.^
+
 //        Imgproc.Canny(edges, edges, 30, 200);
         Bitmap result003 = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
         Utils.matToBitmap(edges, result003);
         mImgOutputThree.setImageBitmap(result003);
-        // detect corner
 
-//        MatOfPoint mmm = new MatOfPoint();
-//        Imgproc.goodFeaturesToTrack(edges, mmm, 10, 0.01, 50);
-//        for (Point p: mmm.toList()){
-//            Imgproc.circle(mat,p,2,new Scalar(0,255,0),5);
-//        }
-        // detect corner ^.^
-
-
-//        Bitmap result03 = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
-//        Utils.matToBitmap(mat, result03);
-//        if (1 == 1) {
-//        mImgOutputThree.setImageBitmap(result03);
-//            return result03;
-//        }
-
-//
         /// test houghline
         Mat line = new Mat();
         Imgproc.HoughLinesP(edges, line, 1, Math.PI / 180,
@@ -424,6 +446,88 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         return result;
     }
 
+    private Bitmap findContour(Bitmap bitmap) {
+
+        Mat mat = new Mat(bitmap.getWidth(), bitmap.getHeight(), CvType.CV_8UC3);
+        Utils.bitmapToMat(bitmap, mat);
+        // convert to gray color and blur image
+        Mat grayMat = new Mat();
+        Imgproc.cvtColor(mat, grayMat, Imgproc.COLOR_RGB2GRAY);
+        Imgproc.blur(grayMat, grayMat, new Size(3, 3));
+        setImageFromMat(mImgTwo, grayMat, bitmap);
+//        Mat cannyMat = new Mat();
+//        Imgproc.Canny(threshMat1, cannyMat, 15, 150);
+//        setImageFromMat(mImgInput, cannyMat, bitmap);
+
+        // make image more bright
+//        Mat brightGrayMat = new Mat();
+//        Imgproc.equalizeHist(grayMat, brightGrayMat);
+//        setImageFromMat(mImgOutputThree, brightGrayMat, bitmap);
+
+
+        // threshold to find contour
+
+        Mat threshMat = new Mat();
+        Imgproc.threshold(grayMat, threshMat, 130, 190, Imgproc.THRESH_BINARY + Imgproc.THRESH_OTSU);
+
+        // find contour
+        List<MatOfPoint> contours = new ArrayList<>();
+        Mat hierachy = new Mat();
+        Imgproc.findContours(threshMat, contours, hierachy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE);
+        double maxArea = -1;
+        int maxAreaIdx = -1;
+        for (int idx = 0; idx < contours.size(); idx++) {
+            double contourarea = Imgproc.contourArea(contours.get(idx));
+            if (contourarea > maxArea) {
+                maxArea = contourarea;
+                maxAreaIdx = idx;
+            }
+        }
+        MatOfPoint2f boundrect = new MatOfPoint2f(contours.get(maxAreaIdx).toArray());
+        Point[] rotpoint = new Point[4];
+        RotatedRect rotrect = Imgproc.minAreaRect(boundrect);
+        rotrect.points(rotpoint);
+
+
+        Mat matClone = mat.clone();
+        // draw rect
+        Imgproc.line(matClone, rotpoint[0], rotpoint[1], new Scalar(0, 255, 0), 10);
+        Imgproc.line(matClone, rotpoint[1], rotpoint[2], new Scalar(255, 255, 0), 10);
+        Imgproc.line(matClone, rotpoint[2], rotpoint[3], new Scalar(0, 255, 255), 10);
+        Imgproc.line(matClone, rotpoint[3], rotpoint[0], new Scalar(255, 0, 255), 10);
+        setImageFromMat(mImgOutputThree, matClone, bitmap);
+
+        List<Point> targetPoint = new ArrayList<>();
+        targetPoint.add(new Point(0, 0));
+        targetPoint.add(new Point(0, 320));
+        targetPoint.add(new Point(640, 320));
+        targetPoint.add(new Point(640, 0));
+
+        List<Point> currentPoint = new ArrayList<>();
+        double distance01 = Math.hypot(rotpoint[0].x - rotpoint[1].x, rotpoint[0].y - rotpoint[1].y);
+        double distance12 = Math.hypot(rotpoint[1].x - rotpoint[2].x, rotpoint[1].y - rotpoint[2].y);
+        if (distance01 < distance12) {
+            currentPoint.add(rotpoint[1]);
+            currentPoint.add(rotpoint[0]);
+            currentPoint.add(rotpoint[3]);
+            currentPoint.add(rotpoint[2]);
+        } else {
+            currentPoint.add(rotpoint[2]);
+            currentPoint.add(rotpoint[1]);
+            currentPoint.add(rotpoint[0]);
+            currentPoint.add(rotpoint[3]);
+        }
+
+        Mat output = new Mat();
+        Mat mat2f = Converters.vector_Point2f_to_Mat(currentPoint);
+        Mat targetMat2f = Converters.vector_Point2f_to_Mat(targetPoint);
+        Mat perspectiveTranformation = Imgproc.getPerspectiveTransform(mat2f, targetMat2f);
+        Imgproc.warpPerspective(mat, output, perspectiveTranformation, new Size(640, 320), Imgproc.INTER_NEAREST, 1, new Scalar(255, 255, 255));
+
+
+        return setImageFromMat(mImgOutputFour, output, Bitmap.createBitmap(640, 320, Bitmap.Config.ARGB_8888));
+    }
+
     public Bitmap getThumbnail(Uri uri) throws FileNotFoundException, IOException {
         InputStream input = this.getContentResolver().openInputStream(uri);
 
@@ -501,30 +605,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         return mat;
     }
 
-    private void quickSort(List<Integer> list, int low, int high) {
-        int i = low, j = high;
-        int pivot = list.get((low + high) / 2);
-        // Divide into two lists
-        while (i <= j) {
-            while (list.get(i) < pivot) {
-                i++;
-            }
-            while (list.get(j) > pivot) {
-                j--;
-            }
-            if (i <= j) {
-                exchange(list, i, j);
-                i++;
-                j--;
-            }
-        }
-        // Recursion
-        if (low < j)
-            quickSort(list, low, j);
-        if (i < high)
-            quickSort(list, i, high);
-    }
-
     private void exchange(List<Integer> list, int i, int j) {
         int temp = list.get(i);
         list.set(i, list.get(j));
@@ -556,6 +636,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
+
+    private Bitmap setImageFromMat(ImageView imageView, Mat mat, Bitmap input) {
+        Bitmap bitmap = Bitmap.createBitmap(input.getWidth(), input.getHeight(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(mat, bitmap);
+        imageView.setImageBitmap(bitmap);
+        return bitmap;
+    }
 
 }
 
